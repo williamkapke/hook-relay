@@ -15,7 +15,7 @@ const routes = {
   // (just for testing)
   'GET/info': (req, res) => {
     const info = JSON.stringify({ listeners: app.listenerCount('sse') })
-    app.emit('sse', info)
+    app.emit('sse', 'info', info)
     res.writeHead(200, { 'content-type': 'application/json' })
     res.end(info)
   },
@@ -30,11 +30,13 @@ const routes = {
     litesocket(req, res, () => {
 
       const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress
-      const fn = (event) => {
-        if(event === 'ping')
-          litesocket.sendComment(res, 'ping')
-        else
-          res.send(event)
+      const fn = (event, data) => {
+        if(event === 'ping') {
+          return litesocket.sendComment(res, 'ping')
+        }
+
+        litesocket.sendEvent(res, event)
+        litesocket.send(res, data)
       }
       const removeListener = (timeout) => {
         console.log('removing listener @ ' + ip + (timeout||''))
@@ -54,6 +56,9 @@ const routes = {
     })
   },
   'POST/': (req, res) => {
+    const event = req.headers['x-github-event']
+    if(!event) return res.end()
+
     req.pipe(bl(function (err, data) {
       if (err) return res.status(400).end()
 
@@ -64,12 +69,11 @@ const routes = {
         return res.status(400).end()
       }
 
-      const event = req.headers['x-github-event']
       const source = data.repository ? data.repository.full_name : data.organization.login
       const action = data.action ? event + '.' + data.action : event
       console.log('event@%s: %s', source, action)
 
-      app.emit('sse', JSON.stringify(data, null, 2))
+      app.emit('sse', event, JSON.stringify(data, null, 2))
 
       res.end()
     }))
