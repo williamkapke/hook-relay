@@ -15,7 +15,7 @@ const routes = {
   // (just for testing)
   'GET/info': (req, res) => {
     const info = JSON.stringify({ listeners: app.listenerCount('sse') })
-    app.emit('sse', 'info', info)
+    app.emit('sse', info)
     res.writeHead(200, { 'content-type': 'application/json' })
     res.end(info)
   },
@@ -30,12 +30,11 @@ const routes = {
     litesocket(req, res, () => {
 
       const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress
-      const fn = (event, data) => {
-        if(event === 'ping') {
+      const fn = (data) => {
+        if(data === 'ping') {
           return litesocket.sendComment(res, 'ping')
         }
 
-        litesocket.sendEvent(res, event)
         litesocket.send(res, data)
       }
       const removeListener = (timeout) => {
@@ -73,7 +72,7 @@ const routes = {
       const action = data.action ? event + '.' + data.action : event
       console.log('event@%s: %s', source, action)
 
-      app.emit('sse', event, JSON.stringify(data, null, 2))
+      app.emit('sse', JSON.stringify(data, null, 2))
 
       res.end()
     }))
