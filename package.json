@@ -1,0 +1,12 @@
+{
+  "name": "github-webhook-relay",
+  "version": "1.0.0",
+  "description": "Relay data recieved from a Github webhook",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "author": "William Kapke",
+  "license": "MIT"
+}
