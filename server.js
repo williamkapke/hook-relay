@@ -69,8 +69,8 @@ const routes = {
       }
 
       const source = data.repository ? data.repository.full_name : data.organization.login
-      const action = data.action ? event + '.' + data.action : event
-      console.log('event@%s: %s', source, action)
+      data.action = data.action ? event + '.' + data.action : event
+      console.log('event@%s: %s', source, data.action)
 
       app.emit('sse', JSON.stringify(data, null, 2))
 
