@@ -54,13 +54,23 @@ const routes = {
     })
   },
   'POST/': (req, res) => {
-    const event = req.headers['x-github-event']
-    console.log('event@%s: %s', event)
-
     req.pipe(bl(function (err, data) {
       if (err) return res.status(400).end()
 
-      app.emit('sse', data.toString())
+
+      try {
+        data = JSON.parse(data.toString())
+      } catch (e) {
+        return res.status(400).end()
+      }
+
+      const event = req.headers['x-github-event']
+      const source = data.repository ? data.repository.full_name : data.organization.login
+      const action = data.action ? event + '.' + data.action : event
+      console.log('event@%s: %s', source, action)
+
+      app.emit('sse', JSON.stringify(data, null, 2))
+
       res.end()
     }))
   }
