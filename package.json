@@ -1,5 +1,5 @@
 {
-  "name": "github-webhook-relay",
+  "name": "hook-relay",
   "version": "1.0.0",
   "description": "Relay data recieved from a Github webhook",
   "main": "server.js",
@@ -8,5 +8,9 @@
     "start": "node server.js"
   },
   "author": "William Kapke",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "bl": "^1.1.2",
+    "litesocket": "^0.9.3"
+  }
 }

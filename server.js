@@ -1,70 +1,82 @@
 'use strict'
-require('dotenv').load({ silent: true })
 
 const crypto = require('crypto')
-const debug = require('debug')('github')
 const litesocket = require('litesocket')
-const express = require('express')
-const bodyParser = require('body-parser')
+const http = require('http')
+const bl = require('bl')
+const events = new (require('events').EventEmitter)()
 
-const app = express()
-const captureRaw = (req, res, buffer) => { req.raw = buffer }
-app.use(bodyParser.json({ verify: captureRaw }))
+http.ServerResponse.prototype.status = function(code) {
+  this.statusCode = code
+  return this
+}
+const routes = {
+  // an endpoint that just gives some info- and causes that info to be emitted
+  // (just for testing)
+  'GET/info': (req, res) => {
+    const info = JSON.stringify({ listeners: app.listenerCount('sse') })
+    app.emit('sse', info)
+    res.writeHead(200, { 'content-type': 'application/json' })
+    res.end(info)
+  },
 
-const secret = process.env.GITHUB_WEBHOOK_SECRET || 'hush-hush'
+  // Add an endpoint that will send all events via SSE.
+  'GET/': (req, res) => {
+    // do not allow too many listeners!
+    if (app.listenerCount('sse') >= app.getMaxListeners()) {
+      return res.status(502).end()
+    }
 
-const sign = (secret, data) => {
-  const buffer = new Buffer(data, 'utf8')
-  return 'sha1=' + crypto.createHmac('sha1', secret).update(buffer).digest('hex')
+    litesocket(req, res, () => {
+
+      const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress
+      const fn = (event) => {
+        if(event === 'ping')
+          litesocket.sendComment(res, 'ping')
+        else
+          res.send(event)
+      }
+      const removeListener = (timeout) => {
+        console.log('removing listener @ ' + ip + (timeout||''))
+        app.removeListener('sse', fn)
+      }
+      const timeout = () => {
+        removeListener(' (timeout)')
+        res.end()
+      }
+
+      console.log('new listener @ ' + ip)
+      app.on('sse', fn)
+      res.on('close', removeListener)
+
+      // force disconnect after 20 min
+      setTimeout(timeout, 1200000)
+    })
+  },
+  'POST/': (req, res) => {
+    const event = req.headers['x-github-event']
+    console.log('event@%s: %s', event)
+
+    req.pipe(bl(function (err, data) {
+      if (err) return res.status(400).end()
+
+      app.emit('sse', data.toString())
+      res.end()
+    }))
+  }
 }
 
-app.post('/', (req, res) => {
-  const event = req.headers['x-github-event']
-  if (!event) {
-    res.writeHead(400, 'Event Header Missing')
-    return res.end()
-  }
 
-  const signature = req.headers['x-hub-signature']
-  if (!signature || signature !== sign(secret, req.raw)) {
-    res.writeHead(401, 'Invalid Signature')
-    return res.end()
-  }
 
-  res.end()
+const port = process.env.PORT || 3000
+var app = http.createServer((req, res) => {
+  const handler = routes[req.method+req.url]
+  if(!handler) return res.status(404).end()
 
-  const data = req.body
-  const action = data.action ? event + '.' + data.action : event
-
-  var source = data.repository ? data.repository.full_name : data.organization.login
-  console.log('event@%s: %s', source, action)
-
-  app.emit('sse', JSON.stringify(data, null, 2))
+  handler(req, res)
+})
+.listen(port, () => {
+  console.log('hook-relay listening on port', port)
 })
 
-app.get('/info', (req, res) => {
-  const info = JSON.stringify({ listeners: app.listenerCount('sse') }, null, 2);
-  app.emit('sse', info)
-  res.json(info)
-})
-
-// Add an endpoint that will send all events via SSE.
-app.get('/', litesocket, (req, res) => {
-  // do not allow too many listeners!
-  if (app.listenerCount('sse') > app.getMaxListeners()) {
-    return res.status(502).end()
-  }
-
-  const fn = (event) => res.send(event)
-  const removeListener = () => app.removeListener('sse', fn)
-  const timeout = () => {
-    removeListener()
-    res.end()
-  }
-
-  app.on('sse', fn)
-  res.on('close', removeListener)
-
-  // force disconnect after 20 min
-  setTimeout(timeout, 1200000)
-})
+setInterval(() => app.emit('sse', 'ping'), 57000);
